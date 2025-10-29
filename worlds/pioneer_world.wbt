@@ -31,7 +31,7 @@ PalmTree {
   translation 0.12 -7.77 0
   name "palm tree(8)"
 }
-Pioneer3at {
+DEF ROBOT_3 Pioneer3at {
   hidden position_0_0 3.2376677903280986
   hidden position_0_1 3.2376679236700663
   hidden position_0_2 3.23766127070526
@@ -50,7 +50,7 @@ Pioneer3at {
     }
   ]
 }
-Pioneer3at {
+DEF ROBOT_2 Pioneer3at {
   hidden position_0_0 3.2376605544886106
   hidden position_0_1 3.23765814421846
   hidden position_0_2 3.237637481359846
@@ -89,7 +89,7 @@ PalmTree {
   translation -4.78 2.01 0
   name "palm tree(2)"
 }
-Pioneer3at {
+DEF ROBOT_4 Pioneer3at {
   hidden position_0_0 3.237660572913561
   hidden position_0_1 3.2376581607787918
   hidden position_0_2 3.237637508767039
@@ -124,7 +124,7 @@ WorkBarrier {
   rotation -0.457570136153446 0.3216330957043541 0.8289642466645655 -2.519215307179586
   name "work barrier(9)"
 }
-Pioneer3at {
+DEF ROBOT_1 Pioneer3at {
   hidden position_0_0 3.2376660291927273
   hidden position_0_1 3.237665486761078
   hidden position_0_2 3.2376411832285426
@@ -184,7 +184,7 @@ WorkBarrier {
   rotation 0 0 1 1.309
   name "work barrier(2)"
 }
-Pioneer3at {
+DEF ROBOT_5 Pioneer3at {
   hidden position_0_0 3.2376448690238697
   hidden position_0_1 3.2376463500307904
   hidden position_0_2 3.2376276846641483
@@ -202,4 +202,23 @@ Pioneer3at {
       translation 0.17 0 0.32
     }
   ]
+}
+Robot {
+  controller "supervisor"
+  supervisor TRUE
+  translation 0 0 0
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 0 1 0
+          transparency 0.9
+        }
+      }
+      geometry Box {
+        size 0.1 0.1 0.1
+      }
+    }
+  ]
+  name "supervisor_robot"
 }

@@ -1,0 +1,66 @@
+# ROS2 workspace build artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Python package metadata
+*.egg-info/
+dist/
+*.egg
+
+# Compiled C binaries (if not meant to be tracked)
+*.o
+*.a
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Webots temporary/backup files
+*.wbproj
+*.wbcache
+*.wbopt
+
+# Backup directories
+bkp/
+*.bak
+*.backup
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Environment and configuration files (if sensitive)
+.env
+.env.local
+*.local
+

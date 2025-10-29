@@ -1,0 +1,266 @@
+
+what is done?
+
+basic world
+config robots
+Mount and config external lidar attachment on robots
+obstacle avoiding algo for lidar
+publish odometry data via ros for all 5 robots
+
+##################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+what is yet to do:
+
+PHASE 1: FOUNDATION
+- [ ] Create custom ROS2 messages package
+  - [ ] SearchAndRescue/DetectionReport.msg (object_pose, confidence, image_snippet)
+  - [ ] SearchAndRescue/TerritoryAssignment.msg (assigned_region, priority)
+  - [ ] SearchAndRescue/MissionStatus.msg (status, object_pose if found)
+  - [ ] SearchAndRescue/ConsensusMessage.msg (wraps messages for TCE)
+- [ ] Implement basic A* path planner node
+  - [ ] Global planner: A* algorithm on occupancy grid
+  - [ ] Subscribe to /robot_i/odom (current pose)
+  - [ ] Subscribe to exploration goals
+  - [ ] Publish waypoint path to /robot_i/global_path
+- [ ] Modify controller.c to subscribe to /robot_i/cmd_vel
+  - [ ] Add ROS2 subscriber for cmd_vel commands
+  - [ ] Priority system: obstacle avoidance > cmd_vel > default
+  - [ ] Safety override always active
+
+PHASE 2: EXPLORATION
+- [ ] Occupancy grid builder node
+  - [ ] Process LiDAR scans into occupancy grid (0.1-0.5m resolution)
+  - [ ] Maintain local map per robot
+  - [ ] Publish updates to /robot_i/occupancy_map
+- [ ] Frontier detection algorithm
+  - [ ] Detect boundaries between known/unknown regions
+  - [ ] Calculate frontier utility (distance + information gain)
+  - [ ] Select best frontier as exploration goal
+- [ ] Goal selector node
+  - [ ] Integrate frontier detection
+  - [ ] Coordinate with other robots (avoid same frontiers)
+  - [ ] Publish selected goals to path planner
+
+PHASE 3: TCE INTEGRATION
+- [ ] TCE consensus node (per robot)
+  - [ ] Message validation service
+  - [ ] Vote submission mechanism
+  - [ ] Vote aggregation (4/5 for 5 robots)
+  - [ ] Consensus result broadcasting
+- [ ] TCE message wrapper
+  - [ ] Wrap critical messages for TCE verification
+  - [ ] Add vote tracking
+  - [ ] Publish consensus results to /consensus/* topics
+- [ ] Integrate TCE with ROS2 topics
+  - [ ] /robot_i/object_detection → TCE validation
+  - [ ] Territory assignments via TCE consensus
+  - [ ] Mission status changes via TCE consensus
+
+PHASE 4: OBJECT DETECTION
+- [ ] Camera integration in Webots
+  - [ ] Mount and configure camera on robots
+  - [ ] Publish camera feed to /robot_i/camera/image_raw
+- [ ] Object detection node
+  - [ ] Image processing pipeline
+  - [ ] Detection algorithm (YOLO/OpenCV/TensorFlow)
+  - [ ] Confidence scoring
+  - [ ] Pose estimation (object location relative to robot)
+  - [ ] Publish detections to /robot_i/object_detection
+- [ ] Multi-robot verification system
+  - [ ] When detection published, other robots navigate to verify
+  - [ ] Vote aggregation for confirmations
+  - [ ] 4/5 consensus required → /consensus/object_found
+
+PHASE 5: COORDINATION
+- [ ] Mission coordinator node
+  - [ ] Initial territory assignment (divide map into 5 regions)
+  - [ ] Dynamic re-allocation when region completed
+  - [ ] Mission state machine management
+- [ ] Territory assignment algorithm
+  - [ ] Divide map based on boundaries
+  - [ ] Assign regions via TCE consensus
+  - [ ] Prevent overlap, ensure coverage
+- [ ] Collision avoidance system
+  - [ ] Publish planned paths to /robot_i/planned_path
+  - [ ] Global collision checker subscribes to all paths
+  - [ ] Detect conflicts (collision course)
+  - [ ] Priority-based resolution via TCE consensus
+
+PHASE 6: INTEGRATION & TESTING
+- [ ] End-to-end integration testing
+  - [ ] Full mission simulation
+  - [ ] Multi-robot coordination test
+  - [ ] TCE consensus verification test
+  - [ ] Object detection and verification flow
+- [ ] Parameter tuning
+  - [ ] Exploration parameters
+  - [ ] Path planning parameters
+  - [ ] TCE consensus timing
+  - [ ] Detection thresholds
+
+MISC TODO:
+- [ ] World building enhancements (add random object placement)
+- [ ] Launch file for all nodes
+- [ ] Documentation and usage guides
+- [ ] Visualization tools (RViz config for multi-robot view)
