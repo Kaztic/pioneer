@@ -1,282 +1,289 @@
-# Pioneer Multi-Robot Simulation Project
+# Pioneer Multi-Robot Simulation
 
-## 🎯 Overview
+A multi-robot autonomous exploration system built with Webots and ROS 2, featuring 5 Pioneer3at robots with autonomous navigation, frontier-based exploration, and path planning capabilities.
 
-This project simulates **5 Pioneer3at robots** with **Sick LMS 291 lidar sensors** performing autonomous obstacle avoidance in a Webots environment using a Braitenberg-like control algorithm.
+## Prerequisites
 
----
+Before setting up the system, ensure you have the following installed:
 
-## 📁 Project Structure
+### Required Software
 
-```
-pioneer/
-├── controllers/
-│   └── pioneer_controller/          # Main robot controller
-│       ├── controller.c             # Braitenberg obstacle avoidance code
-│       └── Makefile                 # Build configuration
-├── worlds/
-│   └── pioneer_world.wbt            # Main simulation world with 5 robots
-├── start_pioneer.sh                 # 🚀 Launch script (USE THIS!)
-├── plugins/                         # Webots plugins
-├── protos/                          # Custom robot prototypes
-└── libraries/                       # Additional libraries
+1. **Webots** (R2023a or later)
+   - Download from: https://cyberbotics.com/
+   - Ensure Webots is in your PATH or set `WEBOTS_HOME` environment variable
 
-```
+2. **ROS 2 Humble Hawksbill**
+   - Installation guide: https://docs.ros.org/en/humble/Installation.html
+   - Ubuntu/Debian: Follow the official ROS 2 Humble installation instructions
 
----
+3. **System Dependencies**
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y \
+       build-essential \
+       gcc \
+       make \
+       python3-pip \
+       python3-colcon-common-extensions
+   ```
 
-## 🤖 What the Controller Does
+4. **Python Dependencies**
+   ```bash
+   pip3 install numpy
+   ```
 
-The `pioneer_controller` implements a **Braitenberg-like obstacle avoidance** algorithm:
+### ROS 2 Packages
 
-### Algorithm Details:
-1. **Sensor Input**: Uses Sick LMS 291 lidar with 180 horizontal resolution
-2. **Obstacle Detection**: Detects obstacles within 1/20th of max range
-3. **Speed Control**:
-   - **No obstacles**: Cruise at 5.0 m/s
-   - **Obstacles detected**: Adjust wheel speeds using Gaussian-weighted coefficients
-4. **Avoidance Behavior**:
-   - Left obstacle → Turn right
-   - Right obstacle → Turn left
-   - Front obstacle → Slow down and navigate around
+The following ROS 2 packages are required (included as dependencies):
+- `rclpy`
+- `nav_msgs`
+- `geometry_msgs`
+- `sensor_msgs`
+- `std_msgs`
+- `tf2_ros`
+- `tf2_msgs`
 
-### Key Parameters:
-- `MAX_SPEED`: 6.4 m/s
-- `CRUISING_SPEED`: 5.0 m/s  
-- `OBSTACLE_THRESHOLD`: 0.1
-- `TIME_STEP`: 32 ms
+These are typically installed with ROS 2 Humble.
 
----
+## Installation
 
-## 🚀 Quick Start
-
-### Method 1: Using the Launch Script (RECOMMENDED)
-
-Simply run:
+### 1. Clone the Repository
 
 ```bash
-cd /home/karthik/ws/tashi/pioneer
-./start_pioneer.sh
+cd ~/your_workspace
+git clone <repository_url> pioneer
+cd pioneer
 ```
 
-**The script will automatically:**
-✓ Check if Webots is installed  
-✓ Compile the controller  
-✓ Launch the simulation  
-✓ Start all 5 robots with obstacle avoidance  
+### 2. Verify Installation
 
-### Method 2: Manual Launch
-
-If you prefer to launch manually:
-
+Ensure Webots is accessible:
 ```bash
-# 1. Build the controller
-cd /home/karthik/ws/tashi/pioneer/controllers/pioneer_controller
-make
-
-# 2. Launch Webots
-webots /home/karthik/ws/tashi/pioneer/worlds/pioneer_world.wbt
+which webots
+# Should output: /usr/local/webots/webots (or similar)
 ```
 
----
-
-## 🤖 The 5 Robots
-
-All robots in the simulation:
-
-| Robot Name | Controller | Sensors |
-|------------|------------|---------|
-| robot_1    | pioneer_controller | Sick LMS 291 lidar |
-| robot_2    | pioneer_controller | Sick LMS 291 lidar |
-| robot_3    | pioneer_controller | Sick LMS 291 lidar |
-| robot_4    | pioneer_controller | Sick LMS 291 lidar |
-| robot_5    | pioneer_controller | Sick LMS 291 lidar |
-
----
-
-## 🛠️ Building the Controller
-
-### Automatic Build (via launch script):
+Verify ROS 2 is sourced:
 ```bash
-./start_pioneer.sh
+source /opt/ros/humble/setup.bash
+ros2 --version
 ```
 
-### Manual Build:
+## Setup
+
+### 1. Environment Configuration
+
+Source ROS 2 in your shell (add to `~/.bashrc` for persistence):
 ```bash
-cd controllers/pioneer_controller
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+```
+
+### 2. Webots Configuration
+
+If Webots is not in your PATH, set the `WEBOTS_HOME` environment variable:
+```bash
+export WEBOTS_HOME=/usr/local/webots
+# Or add to ~/.bashrc for persistence
+echo "export WEBOTS_HOME=/usr/local/webots" >> ~/.bashrc
+```
+
+## Building
+
+### 1. Build Supervisor Controller
+
+The supervisor controller reads robot poses from Webots and writes them to a shared file for ROS 2:
+
+```bash
+cd controllers/supervisor
 make clean
 make
+cd ../..
 ```
 
-### Build Requirements:
-- GCC compiler
-- Webots development libraries
-- Make utility
+The compiled binary will be at: `controllers/supervisor/supervisor`
 
----
+### 2. Build ROS 2 Workspace
 
-## 🌍 World Configuration
-
-**File**: `worlds/pioneer_world.wbt`
-
-**Environment**:
-- 30m × 30m arena with sand floor
-- Palm trees (8 obstacles)
-- Work barriers (9 obstacles)
-- TexturedBackground and lighting
-
-**Robots**:
-- 5 × Pioneer3at with 4-wheel drive
-- Each equipped with Sick LMS 291 lidar
-- Positioned at different locations in the arena
-
----
-
-## 📊 What You'll See
-
-When you run the simulation:
-
-1. **All 5 robots start simultaneously**
-2. **Robots cruise forward** at 5.0 m/s
-3. **When approaching obstacles**:
-   - Robots detect obstacles using lidar
-   - Automatically adjust speed and direction
-   - Navigate smoothly around barriers and palm trees
-4. **Continuous exploration** of the arena
-
----
-
-## 🔧 Customization
-
-### Modify Robot Behavior
-
-Edit `controllers/pioneer_controller/controller.c`:
-
-```c
-#define MAX_SPEED 6.4          // Maximum wheel speed
-#define CRUISING_SPEED 5.0     // Default cruising speed
-#define OBSTACLE_THRESHOLD 0.1 // Sensitivity to obstacles
-#define DECREASE_FACTOR 0.9    // Slowdown factor
-#define BACK_SLOWDOWN 0.9      // Back wheels slowdown
-```
-
-After editing, rebuild:
-```bash
-cd controllers/pioneer_controller
-make clean && make
-```
-
-### Add More Robots
-
-1. Open `worlds/pioneer_world.wbt` in Webots
-2. Add new Pioneer3at robot
-3. Set controller to "pioneer_controller"
-4. Add SickLms291 sensor in extensionSlot
-
----
-
-## 🐛 Troubleshooting
-
-### Issue: "Webots not found"
-**Solution**: Install Webots or add it to PATH:
-```bash
-export PATH="/usr/local/webots:$PATH"
-```
-
-### Issue: "Controller compilation failed"
-**Solution**: Ensure WEBOTS_HOME is set:
-```bash
-export WEBOTS_HOME="/usr/local/webots"
-cd controllers/pioneer_controller
-make
-```
-
-### Issue: "Robots not moving"
-**Solution**: 
-1. Check controller is set to "pioneer_controller" (not "<extern>")
-2. Verify controller compiled successfully
-3. Check Webots console for errors
-
-### Issue: "Lidar not working"
-**Solution**: Ensure each robot has SickLms291 in extensionSlot with proper position
-
----
-
-## 📝 Implementation Summary
-
-### What Was Changed:
-
-#### 1. **Controller Structure** ✅
-- Created `controllers/pioneer_controller/` directory
-- Moved `controller.c` into proper location
-- Created Makefile for compilation
-
-#### 2. **World File Updates** ✅
-Changed all 5 robots in `worlds/pioneer_world.wbt`:
-- ❌ Before: `controller "<extern>"`
-- ✅ After: `controller "pioneer_controller"`
-
-#### 3. **Launch Script** ✅
-Created `start_pioneer.sh` that:
-- Validates environment
-- Compiles controller
-- Launches simulation
-- Provides helpful status messages
-
----
-
-## 💡 Tips
-
-- **Press Space** in Webots to pause/resume simulation
-- **Click and drag** to rotate camera view
-- **Use Ctrl+Shift+P** for top-down view
-- **Right-click robots** to see detailed information
-- **Check console** for controller debug output
-
----
-
-## 📚 Technical Details
-
-### Controller Algorithm:
-
-The Braitenberg vehicle algorithm uses:
-1. **Gaussian weighting** of lidar readings
-2. **Differential drive control** for steering
-3. **Real-time obstacle detection** and response
-
-### Coordinate System:
-- X-axis: Forward/backward
-- Y-axis: Left/right  
-- Z-axis: Up/down
-
-### Time Step:
-- Simulation updates every **32 milliseconds**
-- Controllers run at **31.25 Hz**
-
----
-
-## 🎓 Learning Resources
-
-- [Webots Documentation](https://cyberbotics.com/doc/guide/index)
-- [Pioneer3at Robot Manual](https://cyberbotics.com/doc/guide/pioneer-3at)
-- [Sick LMS 291 Sensor](https://cyberbotics.com/doc/guide/lidar-sensors)
-- [Braitenberg Vehicles](https://en.wikipedia.org/wiki/Braitenberg_vehicle)
-
----
-
-## 📄 License
-
-Copyright 1996-2024 Cyberbotics Ltd.
-Licensed under Apache License 2.0
-
----
-
-## 🚀 Ready to Start?
+Build all ROS 2 packages:
 
 ```bash
-./start_pioneer.sh
+cd ros2_ws
+colcon build
+source install/setup.bash
+cd ..
 ```
 
-**Enjoy watching your robots navigate autonomously!** 🤖🎉
+The build process creates:
+- `ros2_ws/build/` - Build artifacts
+- `ros2_ws/install/` - Installed packages
+- `ros2_ws/log/` - Build logs
 
+**Note:** Always source `install/setup.bash` after building:
+```bash
+source ros2_ws/install/setup.bash
+```
+
+## Running the Application
+
+### Complete Startup Procedure
+
+The system requires three components to run in sequence:
+
+#### Step 1: Start Webots Simulation
+
+Launch the Webots world:
+```bash
+webots worlds/pioneer_world.wbt
+```
+
+**Important:** Wait 3-5 seconds after Webots starts for all controllers to initialize.
+
+#### Step 2: Verify Supervisor Controller is Running
+
+Check that the supervisor controller is writing pose data:
+```bash
+cat /tmp/pioneer_poses.txt
+```
+
+You should see output like:
+```
+POSE:robot_1:-5.814:10.073:0.098:...
+POSE:robot_2:-7.435:8.384:0.098:...
+POSE:robot_3:-9.627:4.962:0.098:...
+POSE:robot_4:-8.728:6.483:0.098:...
+POSE:robot_5:-10.597:3.255:0.098:...
+```
+
+If the file doesn't exist or is empty:
+- Check Webots console for errors (View → Console)
+- Ensure the supervisor controller binary exists: `ls controllers/supervisor/supervisor`
+- Restart Webots completely
+
+#### Step 3: Start Supervisor ROS 2 Node
+
+In a new terminal, source ROS 2 and start the supervisor node:
+```bash
+source /opt/ros/humble/setup.bash
+source ros2_ws/install/setup.bash
+./start_supervisor_node.sh
+```
+
+Or use the integrated launcher:
+```bash
+./launch_with_ros2.sh
+```
+
+This script:
+- Builds supervisor controller if needed
+- Builds ROS 2 workspace if needed
+- Starts the supervisor ROS 2 node
+- Launches Webots
+
+#### Step 4: Launch Robot Nodes for Autonomous Operation
+
+In another terminal, launch all robot navigation nodes:
+```bash
+source /opt/ros/humble/setup.bash
+source ros2_ws/install/setup.bash
+./launch_multi_robot.sh
+```
+
+This script:
+- Verifies supervisor controller is running
+- Checks Webots is running
+- Verifies pose file exists and is fresh
+- Automatically starts supervisor ROS 2 node if not running
+- Launches all navigation nodes for all 5 robots
+
+### Verification
+
+After launching, verify the system is working:
+
+1. **Check ROS 2 Topics:**
+   ```bash
+   ros2 topic list | wc -l
+   # Should show 40+ topics
+   ```
+
+2. **Check Odometry Publishing:**
+   ```bash
+   ros2 topic hz /robot_1/odom
+   # Should show ~30 Hz publishing rate
+   ```
+
+3. **Check LiDAR Data:**
+   ```bash
+   ros2 topic hz /robot_1/scan
+   # Should show publishing rate
+   ```
+
+4. **Monitor Robot Exploration:**
+   - Watch the Webots simulation
+   - Robots should start moving autonomously within 10 seconds
+   - They will build occupancy maps and explore frontiers
+
+### Stopping the System
+
+1. Press `Ctrl+C` in the terminal running `launch_multi_robot.sh`
+2. Press `Ctrl+C` in the terminal running `start_supervisor_node.sh` (if running separately)
+3. Close Webots
+
+## Quick Start Scripts
+
+The repository includes the following scripts for autonomous operation:
+
+- **`launch_with_ros2.sh`** - Starts Webots and supervisor ROS 2 node together
+- **`launch_multi_robot.sh`** - Launches all robot navigation nodes for autonomous exploration
+- **`start_supervisor_node.sh`** - Standalone supervisor ROS 2 node launcher
+
+## Troubleshooting
+
+### Issue: Pose file not created
+
+**Symptoms:** `/tmp/pioneer_poses.txt` doesn't exist after Webots starts
+
+**Solutions:**
+1. Check Webots console for supervisor controller errors
+2. Verify supervisor binary exists: `ls controllers/supervisor/supervisor`
+3. Rebuild supervisor: `cd controllers/supervisor && make clean && make`
+4. Fully close and restart Webots
+
+### Issue: No ROS 2 topics
+
+**Symptoms:** `ros2 topic list` shows only 2 topics (default ROS topics)
+
+**Solutions:**
+1. Verify pose file exists and has data: `cat /tmp/pioneer_poses.txt`
+2. Check supervisor ROS 2 node is running: `ps aux | grep supervisor_node`
+3. Source ROS 2 workspace: `source ros2_ws/install/setup.bash`
+4. Restart supervisor node: `./start_supervisor_node.sh`
+
+### Issue: Robots not moving autonomously
+
+**Symptoms:** Robots idle or only moving randomly
+
+**Solutions:**
+1. Check navigation nodes are running: `ros2 node list`
+2. Verify topics exist: `ros2 topic list | grep robot_1`
+3. Check logs in `logs/multi_robot_*/robot_*/` directories
+4. Verify occupancy grid is building: `ros2 topic echo /robot_1/occupancy_map --once`
+
+### Issue: Build errors
+
+**Symptoms:** `make` or `colcon build` fails
+
+**Solutions:**
+1. Ensure Webots is installed and `WEBOTS_HOME` is set correctly
+2. Check ROS 2 is sourced: `source /opt/ros/humble/setup.bash`
+3. Install missing dependencies: `sudo apt-get install build-essential python3-colcon-common-extensions`
+4. Clean and rebuild: `make clean && make` or `colcon build --cmake-clean-cache`
+
+## System Architecture
+
+For detailed information about ROS nodes, data flow, topics, and autonomous exploration, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## License
+
+Apache-2.0
 

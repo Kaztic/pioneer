@@ -3,6 +3,17 @@ ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 
+# Root-level build artifacts
+build/
+install/
+log/
+logs/
+
+# Controller build artifacts
+controllers/*/build/
+controllers/*/install/
+controllers/*/log/
+
 # Python cache and bytecode
 __pycache__/
 *.py[cod]

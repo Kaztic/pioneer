@@ -1,174 +1,19 @@
 
 what is done?
 
-basic world
-config robots
+test world
+config 5 pioneer all terrain robots
 Mount and config external lidar attachment on robots
-obstacle avoiding algo for lidar
+obstacle avoiding algo with lidar data 
 publish odometry data via ros for all 5 robots
 
 ##################
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+fox-mq 
+
+video Documentation
+friend
+source access
 
 what is yet to do:
 
@@ -183,6 +28,13 @@ PHASE 1: FOUNDATION
   - [ ] Subscribe to /robot_i/odom (current pose)
   - [ ] Subscribe to exploration goals
   - [ ] Publish waypoint path to /robot_i/global_path
+- [ ] Implement path follower node
+  - [ ] Subscribe to /robot_i/global_path (planned path waypoints)
+  - [ ] Subscribe to /robot_i/odom (current robot pose)
+  - [ ] Track current waypoint in path
+  - [ ] Calculate cmd_vel to reach next waypoint (using proportional control or pure pursuit)
+  - [ ] Publish cmd_vel commands to /robot_i/cmd_vel
+  - [ ] Handle path completion and waypoint arrival thresholds
 - [ ] Modify controller.c to subscribe to /robot_i/cmd_vel
   - [ ] Add ROS2 subscriber for cmd_vel commands
   - [ ] Priority system: obstacle avoidance > cmd_vel > default

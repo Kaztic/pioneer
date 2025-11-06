@@ -26,6 +26,8 @@ setup(
         'console_scripts': [
             'supervisor_node = pioneer_ros2.supervisor_node:main',
             'aggregator_node = pioneer_ros2.aggregator_node:main',
+            'cmd_vel_bridge_node = pioneer_ros2.cmd_vel_bridge_node:main',
+            'lidar_bridge_node = pioneer_ros2.lidar_bridge_node:main',
         ],
     },
 )
