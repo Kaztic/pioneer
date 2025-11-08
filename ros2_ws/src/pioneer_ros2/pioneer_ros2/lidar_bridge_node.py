@@ -193,7 +193,7 @@ class LidarBridgeNode(Node):
             # File doesn't exist yet, that's ok
             pass
         except Exception as e:
-            self.get_logger().error(f'Error reading LiDAR file: {e}', exc_info=True)
+            self.get_logger().error(f'Error reading LiDAR file: {e}')
 
 
 def main(args=None):
@@ -208,7 +208,14 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        node.get_logger().error(f'Error in LiDAR bridge node: {e}')
+        # Try to log error, but handle case where ROS2 context is invalid
+        error_msg = str(e) if e else "Unknown error"
+        try:
+            node.get_logger().error(f'Error in LiDAR bridge node: {error_msg}')
+        except:
+            # If logging fails (e.g., context invalid), print to stderr instead
+            import sys
+            print(f'Error in LiDAR bridge node: {error_msg}', file=sys.stderr)
     finally:
         try:
             node.destroy_node()

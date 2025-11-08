@@ -375,7 +375,14 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        node.get_logger().error(f'Error in occupancy grid builder node: {e}')
+        # Try to log error, but handle case where ROS2 context is invalid
+        error_msg = str(e) if e else "Unknown error"
+        try:
+            node.get_logger().error(f'Error in occupancy grid builder node: {error_msg}')
+        except:
+            # If logging fails (e.g., context invalid), print to stderr instead
+            import sys
+            print(f'Error in occupancy grid builder node: {error_msg}', file=sys.stderr)
     finally:
         try:
             node.destroy_node()

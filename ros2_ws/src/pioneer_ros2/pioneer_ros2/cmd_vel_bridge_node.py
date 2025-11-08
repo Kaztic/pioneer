@@ -208,7 +208,7 @@ class CmdVelBridgeNode(Node):
                     f'[CMD_VEL_FILE_WRITTEN] Written to file #{self._write_count}: {file_content.strip()}'
                 )
         except Exception as e:
-            self.get_logger().error(f'Failed to write cmd_vel file: {e}', exc_info=True)
+            self.get_logger().error(f'Failed to write cmd_vel file: {e}')
 
     def write_stop_command(self):
         """Write stop command (all velocities zero)."""
@@ -262,7 +262,14 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        node.get_logger().error(f'Error in bridge node: {e}')
+        # Try to log error, but handle case where ROS2 context is invalid
+        error_msg = str(e) if e else "Unknown error"
+        try:
+            node.get_logger().error(f'Error in bridge node: {error_msg}')
+        except:
+            # If logging fails (e.g., context invalid), print to stderr instead
+            import sys
+            print(f'Error in bridge node: {error_msg}', file=sys.stderr)
     finally:
         try:
             node.destroy_node()
