@@ -22,52 +22,69 @@ PHASE 1: FOUNDATION
   - [ ] SearchAndRescue/DetectionReport.msg (object_pose, confidence, image_snippet)
   - [ ] SearchAndRescue/TerritoryAssignment.msg (assigned_region, priority)
   - [ ] SearchAndRescue/MissionStatus.msg (status, object_pose if found)
-  - [ ] SearchAndRescue/ConsensusMessage.msg (wraps messages for TCE)
-- [ ] Implement basic A* path planner node
-  - [ ] Global planner: A* algorithm on occupancy grid
-  - [ ] Subscribe to /robot_i/odom (current pose)
-  - [ ] Subscribe to exploration goals
-  - [ ] Publish waypoint path to /robot_i/global_path
-- [ ] Implement path follower node
-  - [ ] Subscribe to /robot_i/global_path (planned path waypoints)
-  - [ ] Subscribe to /robot_i/odom (current robot pose)
-  - [ ] Track current waypoint in path
-  - [ ] Calculate cmd_vel to reach next waypoint (using proportional control or pure pursuit)
-  - [ ] Publish cmd_vel commands to /robot_i/cmd_vel
-  - [ ] Handle path completion and waypoint arrival thresholds
+  - [x] SearchAndRescue/ConsensusMessage.msg (exists, will be used with FoxMQ)
+- [x] Implement basic A* path planner node
+  - [x] Global planner: A* algorithm on occupancy grid
+  - [x] Subscribe to /robot_i/odom (current pose)
+  - [x] Subscribe to exploration goals
+  - [x] Publish waypoint path to /robot_i/global_path
+- [x] Implement path follower node
+  - [x] Subscribe to /robot_i/global_path (planned path waypoints)
+  - [x] Subscribe to /robot_i/odom (current robot pose)
+  - [x] Track current waypoint in path
+  - [x] Calculate cmd_vel to reach next waypoint (using proportional control or pure pursuit)
+  - [x] Publish cmd_vel commands to /robot_i/cmd_vel
+  - [x] Handle path completion and waypoint arrival thresholds
 - [ ] Modify controller.c to subscribe to /robot_i/cmd_vel
   - [ ] Add ROS2 subscriber for cmd_vel commands
   - [ ] Priority system: obstacle avoidance > cmd_vel > default
   - [ ] Safety override always active
 
 PHASE 2: EXPLORATION
-- [ ] Occupancy grid builder node
-  - [ ] Process LiDAR scans into occupancy grid (0.1-0.5m resolution)
-  - [ ] Maintain local map per robot
-  - [ ] Publish updates to /robot_i/occupancy_map
-- [ ] Frontier detection algorithm
-  - [ ] Detect boundaries between known/unknown regions
-  - [ ] Calculate frontier utility (distance + information gain)
-  - [ ] Select best frontier as exploration goal
-- [ ] Goal selector node
-  - [ ] Integrate frontier detection
-  - [ ] Coordinate with other robots (avoid same frontiers)
-  - [ ] Publish selected goals to path planner
+- [x] Occupancy grid builder node
+  - [x] Process LiDAR scans into occupancy grid (0.1-0.5m resolution)
+  - [x] Maintain local map per robot
+  - [x] Publish updates to /robot_i/occupancy_map
+- [x] Frontier detection algorithm
+  - [x] Detect boundaries between known/unknown regions
+  - [x] Calculate frontier utility (distance + information gain)
+  - [x] Select best frontier as exploration goal
+- [x] Goal selector node
+  - [x] Integrate frontier detection
+  - [x] Coordinate with other robots (avoid same frontiers) - currently name-based, will enhance with FoxMQ
+  - [x] Publish selected goals to path planner
 
-PHASE 3: TCE INTEGRATION
-- [ ] TCE consensus node (per robot)
-  - [ ] Message validation service
-  - [ ] Vote submission mechanism
-  - [ ] Vote aggregation (4/5 for 5 robots)
-  - [ ] Consensus result broadcasting
-- [ ] TCE message wrapper
-  - [ ] Wrap critical messages for TCE verification
-  - [ ] Add vote tracking
-  - [ ] Publish consensus results to /consensus/* topics
-- [ ] Integrate TCE with ROS2 topics
-  - [ ] /robot_i/object_detection → TCE validation
-  - [ ] Territory assignments via TCE consensus
-  - [ ] Mission status changes via TCE consensus
+PHASE 3: FOXMQ INTEGRATION (REPLACES TCE)
+- [ ] Set up FoxMQ cluster
+  - [ ] Download FoxMQ binary (v0.1.0 or later)
+  - [ ] Generate address book for 5-node cluster (or 4-node for HA)
+  - [ ] Create user credentials for MQTT authentication
+  - [ ] Configure cluster addresses (127.0.0.1:19793-19797 for local testing)
+  - [ ] Start FoxMQ brokers (one per robot or shared cluster)
+- [ ] ROS2-MQTT Bridge Node (per robot)
+  - [ ] Subscribe to ROS2 topics that need robot-to-robot communication
+  - [ ] Publish to MQTT topics via FoxMQ broker
+  - [ ] Subscribe to MQTT topics from other robots
+  - [ ] Publish to ROS2 topics when MQTT messages received
+  - [ ] Handle message serialization (JSON for custom messages)
+- [ ] MQTT Topic Structure
+  - [ ] robots/robot_i/status - Mission status updates
+  - [ ] robots/robot_i/detection - Object detection reports
+  - [ ] robots/robot_i/territory - Territory assignments
+  - [ ] robots/robot_i/consensus_request - Consensus voting requests
+  - [ ] robots/robot_i/consensus_vote - Vote submissions
+  - [ ] robots/robot_i/consensus_result - Consensus results
+  - [ ] coordination/frontiers - Shared frontier information
+  - [ ] coordination/paths - Planned paths for collision avoidance
+- [ ] Consensus via FoxMQ
+  - [ ] Use FoxMQ's built-in consensus for critical decisions
+  - [ ] Territory assignment consensus (4/5 robots required)
+  - [ ] Object detection verification (4/5 robots confirm)
+  - [ ] Mission status coordination[e]
+- [ ] Replace ConsensusMessage.msg usage
+  - [ ] Update to use MQTT topics instead of ROS2 consensus topics
+  - [ ] Keep message structure but route via MQTT
+  - [ ] Maintain backward compatibility with existing ROS2 nodes
 
 PHASE 4: OBJECT DETECTION
 - [ ] Camera integration in Webots
@@ -80,9 +97,9 @@ PHASE 4: OBJECT DETECTION
   - [ ] Pose estimation (object location relative to robot)
   - [ ] Publish detections to /robot_i/object_detection
 - [ ] Multi-robot verification system
-  - [ ] When detection published, other robots navigate to verify
-  - [ ] Vote aggregation for confirmations
-  - [ ] 4/5 consensus required → /consensus/object_found
+  - [ ] When detection published via MQTT, other robots navigate to verify
+  - [ ] Vote aggregation via FoxMQ consensus
+  - [ ] 4/5 consensus required → publish to MQTT (robots/robot_i/consensus_result)
 
 PHASE 5: COORDINATION
 - [ ] Mission coordinator node
@@ -91,28 +108,30 @@ PHASE 5: COORDINATION
   - [ ] Mission state machine management
 - [ ] Territory assignment algorithm
   - [ ] Divide map based on boundaries
-  - [ ] Assign regions via TCE consensus
+  - [ ] Assign regions via FoxMQ consensus
   - [ ] Prevent overlap, ensure coverage
+  - [ ] Publish assignments via MQTT (robots/robot_i/territory)
 - [ ] Collision avoidance system
-  - [ ] Publish planned paths to /robot_i/planned_path
-  - [ ] Global collision checker subscribes to all paths
+  - [ ] Publish planned paths to MQTT (coordination/paths)
+  - [ ] Global collision checker subscribes to all paths via MQTT
   - [ ] Detect conflicts (collision course)
-  - [ ] Priority-based resolution via TCE consensus
+  - [ ] Priority-based resolution via FoxMQ consensus
 
 PHASE 6: INTEGRATION & TESTING
 - [ ] End-to-end integration testing
   - [ ] Full mission simulation
   - [ ] Multi-robot coordination test
-  - [ ] TCE consensus verification test
+  - [ ] FoxMQ consensus verification test
   - [ ] Object detection and verification flow
 - [ ] Parameter tuning
   - [ ] Exploration parameters
   - [ ] Path planning parameters
-  - [ ] TCE consensus timing
+  - [ ] FoxMQ consensus timing
   - [ ] Detection thresholds
 
 MISC TODO:
 - [ ] World building enhancements (add random object placement)
 - [ ] Launch file for all nodes
 - [ ] Documentation and usage guides
-- [ ] Visualization tools (RViz config for multi-robot view)
+- [x] Visualization tools (RViz config for multi-robot view)
+  - [x] Spatial analysis visualizations (heatmap, trajectories, frontiers, path efficiency)

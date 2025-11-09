@@ -131,6 +131,7 @@ class FrontierDetectorNode(Node):
     def detect_frontiers_callback(self):
         """Periodic callback to detect and publish frontiers."""
         if self.current_map is None:
+            self.get_logger().debug('No occupancy map available yet')
             return
 
         frontiers = self.detect_frontiers(self.current_map)
@@ -138,6 +139,8 @@ class FrontierDetectorNode(Node):
         if frontiers:
             self.publish_frontiers(frontiers)
             self.get_logger().info(f'Detected {len(frontiers)} frontiers')
+        else:
+            self.get_logger().debug('No frontiers detected (map might be fully explored or no unknown areas)')
 
     def detect_frontiers(self, occupancy_map: OccupancyGrid) -> List[Tuple[float, float]]:
         """
@@ -159,6 +162,18 @@ class FrontierDetectorNode(Node):
         # Convert occupancy grid data to numpy array for easier processing
         # OccupancyGrid is stored row-major: data[i] = grid[row][col] where row = i/width, col = i%width
         grid = np.array(occupancy_map.data).reshape((height, width))
+
+        # Debug: Count cell types
+        unique, counts = np.unique(grid, return_counts=True)
+        cell_counts = dict(zip(unique, counts))
+        free_count = sum(counts[i] for i, val in enumerate(unique) if 0 <= val <= 50)
+        unknown_count = cell_counts.get(-1, 0)
+        occupied_count = sum(counts[i] for i, val in enumerate(unique) if val > 50)
+        
+        self.get_logger().debug(
+            f'Map stats: {width}x{height}, resolution={resolution:.3f}m, '
+            f'Free={free_count}, Unknown={unknown_count}, Occupied={occupied_count}'
+        )
 
         # Detect frontier cells: cells that are FREE (0-50) adjacent to UNKNOWN (-1)
         frontier_cells = []
@@ -197,8 +212,11 @@ class FrontierDetectorNode(Node):
                     world_y = origin_y + (y + 0.5) * resolution
                     frontier_cells.append((world_x, world_y))
 
+        self.get_logger().debug(f'Found {len(frontier_cells)} frontier cells')
+
         # Group nearby frontier cells into clusters
         frontier_clusters = self.cluster_frontiers(frontier_cells, resolution)
+        self.get_logger().debug(f'Created {len(frontier_clusters)} frontier clusters')
         
         # Filter clusters by size
         valid_frontiers = []
@@ -208,9 +226,20 @@ class FrontierDetectorNode(Node):
                 center_x = sum(p[0] for p in cluster) / len(cluster)
                 center_y = sum(p[1] for p in cluster) / len(cluster)
                 valid_frontiers.append((center_x, center_y))
+            else:
+                self.get_logger().debug(
+                    f'Cluster with {len(cluster)} cells filtered out (threshold: {self.frontier_size_threshold})'
+                )
+
+        self.get_logger().debug(f'{len(valid_frontiers)} frontiers passed size threshold')
 
         # Filter frontiers that are too close to each other
         filtered_frontiers = self.filter_close_frontiers(valid_frontiers, self.frontier_distance_threshold)
+        
+        if len(valid_frontiers) != len(filtered_frontiers):
+            self.get_logger().debug(
+                f'Filtered {len(valid_frontiers) - len(filtered_frontiers)} frontiers due to distance threshold'
+            )
 
         return filtered_frontiers
 

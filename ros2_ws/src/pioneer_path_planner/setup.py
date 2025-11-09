@@ -27,6 +27,7 @@ setup(
             'occupancy_grid_builder_node = pioneer_path_planner.occupancy_grid_builder_node:main',
             'frontier_detector_node = pioneer_path_planner.frontier_detector_node:main',
             'goal_selector_node = pioneer_path_planner.goal_selector_node:main',
+            'spatial_analysis_visualizer_node = pioneer_path_planner.spatial_analysis_visualizer_node:main',
         ],
     },
 )

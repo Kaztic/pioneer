@@ -15,7 +15,7 @@ setup(
         (os.path.join('share', package_name, 'launch'),
          glob('launch/*.py')),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'paho-mqtt'],
     zip_safe=True,
     maintainer='Pioneer Team',
     maintainer_email='user@example.com',
@@ -28,6 +28,7 @@ setup(
             'aggregator_node = pioneer_ros2.aggregator_node:main',
             'cmd_vel_bridge_node = pioneer_ros2.cmd_vel_bridge_node:main',
             'lidar_bridge_node = pioneer_ros2.lidar_bridge_node:main',
+            'foxmq_bridge_node = pioneer_ros2.foxmq_bridge_node:main',
         ],
     },
 )

@@ -13,6 +13,8 @@ logs/
 controllers/*/build/
 controllers/*/install/
 controllers/*/log/
+controllers/*/controller
+controllers/*/*.o
 
 # Python cache and bytecode
 __pycache__/
@@ -64,14 +66,46 @@ bkp/
 
 # Log files
 *.log
+/tmp/robot_*.log
+/tmp/foxmq_*.log
+/tmp/spatial_analysis.log
+/tmp/supervisor_node.log
+/tmp/ros2_supervisor.log
 
 # Temporary files
 *.tmp
 *.temp
 .cache/
+/tmp/pioneer_*.txt
 
 # Environment and configuration files (if sensitive)
 .env
 .env.local
 *.local
 
+# FoxMQ cluster runtime files
+foxmq_cluster/foxmq.d/*.pem
+foxmq_cluster/foxmq.d/*.key
+foxmq_cluster/*.zip
+foxmq_cluster/foxmq.d/address-book.toml
+foxmq_cluster/foxmq.d/users.toml
+
+# Keep FoxMQ binary but ignore downloaded archives
+!foxmq_cluster/foxmq
+
+# Webots world cache
+worlds/.pioneer_world.jpg
+worlds/.pioneer_world.wbproj
+
+# Personal notes and temporary files
+copy.txt
+notes.txt
+
+# RViz configs (keep if needed, but can be regenerated)
+# pioneer_spatial_analysis.rviz
+
+# Script output files
+/tmp/foxmq_start.log
+/tmp/foxmq_startup.log
+/tmp/foxmq_test.log
+/tmp/foxmq_broker_*.log

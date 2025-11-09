@@ -201,7 +201,24 @@ class SupervisorNode(Node):
             # Publish odometry
             self.odom_publishers[robot_name].publish(odom_msg)
             
-            # Publish TF transform
+            # Publish TF transform: map -> robot_odom -> robot_base_link
+            # First, publish map -> robot_odom (static, robot_1/odom is at origin of map)
+            if robot_name == 'robot_1':
+                # Map frame (world frame) - robot_1/odom is the reference
+                map_transform = TransformStamped()
+                map_transform.header.stamp = now.to_msg()
+                map_transform.header.frame_id = 'map'
+                map_transform.child_frame_id = f'{robot_name}/odom'
+                map_transform.transform.translation.x = 0.0
+                map_transform.transform.translation.y = 0.0
+                map_transform.transform.translation.z = 0.0
+                map_transform.transform.rotation.x = 0.0
+                map_transform.transform.rotation.y = 0.0
+                map_transform.transform.rotation.z = 0.0
+                map_transform.transform.rotation.w = 1.0
+                self.tf_broadcaster.sendTransform(map_transform)
+            
+            # Publish robot_odom -> robot_base_link
             transform = TransformStamped()
             transform.header.stamp = now.to_msg()
             transform.header.frame_id = f'{robot_name}/odom'
@@ -232,9 +249,18 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except rclpy.executors.ExternalShutdownException:
+        # ROS2 is already shutting down, don't call shutdown again
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except:
+            pass
+        try:
+            rclpy.shutdown()
+        except:
+            pass
 
 
 if __name__ == '__main__':

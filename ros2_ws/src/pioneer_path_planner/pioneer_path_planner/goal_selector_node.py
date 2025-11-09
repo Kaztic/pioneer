@@ -192,6 +192,13 @@ class GoalSelectorNode(Node):
     def occupancy_grid_callback(self, msg: OccupancyGrid):
         """Update occupancy grid for goal validation."""
         self.occupancy_grid = msg
+        # Count cells for debugging
+        occupied = sum(1 for v in msg.data if v > 50)
+        free = sum(1 for v in msg.data if 0 <= v < 50)
+        unknown = sum(1 for v in msg.data if v == -1)
+        self.get_logger().info(
+            f'[OCCUPANCY_GRID_RECEIVED] Occupancy grid updated: {occupied} occupied, {free} free, {unknown} unknown cells'
+        )
 
     def select_goal_callback(self):
         """Periodic callback to select and publish goal."""
@@ -281,14 +288,23 @@ class GoalSelectorNode(Node):
         if self.current_goal is not None and self.goal_set_time is not None:
             time_since_goal = current_time - self.goal_set_time
             if time_since_goal < self.goal_timeout:
-                # Goal still valid, check if we're close
+                # Goal still valid, check if it's still in free space
                 goal_pos = (
                     self.current_goal.pose.position.x,
                     self.current_goal.pose.position.y
                 )
-                distance_to_goal = self.euclidean_distance(self.robot_position, goal_pos)
-                if distance_to_goal > 3.0:  # Still far from goal
-                    return  # Keep current goal
+                
+                # Re-validate goal - if it became occupied, find a new one
+                if not self.is_goal_valid(goal_pos):
+                    self.get_logger().warn(
+                        f'[GOAL_INVALIDATED] Current goal ({goal_pos[0]:.2f}, {goal_pos[1]:.2f}) '
+                        f'is no longer in free space. Selecting new goal.'
+                    )
+                    # Goal became invalid, select a new one below
+                else:
+                    distance_to_goal = self.euclidean_distance(self.robot_position, goal_pos)
+                    if distance_to_goal > 3.0:  # Still far from goal
+                        return  # Keep current goal
         
         # Select best frontier
         best_frontier = self.select_best_frontier(self.current_frontiers, self.robot_position)
@@ -323,19 +339,52 @@ class GoalSelectorNode(Node):
         # Validate goal before publishing (check if it's in free space)
         if not self.is_goal_valid(best_frontier):
             # Goal is not valid (occupied or unknown), try to find nearby free cell
-            valid_goal = self.find_nearby_free_cell(best_frontier)
-            if valid_goal is None:
-                # Couldn't find valid goal nearby, skip this frontier
-                self.get_logger().warn(
-                    f'[GOAL_VALIDATION_FAILED] Frontier ({best_frontier[0]:.2f}, {best_frontier[1]:.2f}) '
-                    f'is not in free space and no nearby free cell found. Skipping.'
-                )
-                return
-            best_frontier = valid_goal
-            self.get_logger().info(
-                f'[GOAL_ADJUSTED] Adjusted goal from frontier to nearby free cell: '
-                f'({best_frontier[0]:.2f}, {best_frontier[1]:.2f})'
+            self.get_logger().warn(
+                f'[GOAL_VALIDATION_FAILED] Frontier ({best_frontier[0]:.2f}, {best_frontier[1]:.2f}) '
+                f'is not in free space. Searching for nearby free cell...'
             )
+            valid_goal = self.find_nearby_free_cell(best_frontier, max_search_radius=4.0)
+            if valid_goal is None:
+                # Couldn't find valid goal nearby, try next best frontier
+                self.get_logger().warn(
+                    f'[GOAL_VALIDATION_FAILED] No free cell found near frontier '
+                    f'({best_frontier[0]:.2f}, {best_frontier[1]:.2f}). Trying next best frontier.'
+                )
+                # Try second best frontier
+                frontiers_without_best = [f for f in self.current_frontiers if f != best_frontier]
+                if frontiers_without_best:
+                    best_frontier = self.select_best_frontier(frontiers_without_best, self.robot_position)
+                    if best_frontier is not None and self.is_goal_valid(best_frontier):
+                        # Found valid alternative
+                        pass
+                    elif best_frontier is not None:
+                        # Try to find free cell for alternative
+                        valid_goal = self.find_nearby_free_cell(best_frontier, max_search_radius=4.0)
+                        if valid_goal is not None:
+                            best_frontier = valid_goal
+                        else:
+                            # Still no valid goal, skip
+                            return
+                    else:
+                        return
+                else:
+                    return
+            else:
+                best_frontier = valid_goal
+                self.get_logger().info(
+                    f'[GOAL_ADJUSTED] Adjusted goal from frontier to nearby free cell: '
+                    f'({best_frontier[0]:.2f}, {best_frontier[1]:.2f})'
+                )
+        
+        # Final validation check before publishing
+        if not self.is_goal_valid(best_frontier):
+            # Get cell state for logging
+            cell_state = self.get_cell_state(best_frontier)
+            self.get_logger().error(
+                f'[GOAL_REJECTED] Goal ({best_frontier[0]:.2f}, {best_frontier[1]:.2f}) '
+                f'failed final validation (cell state: {cell_state}). Not publishing.'
+            )
+            return  # Don't publish invalid goals
         
         # Publish goal
         self.publish_goal(best_frontier)
@@ -559,7 +608,49 @@ class GoalSelectorNode(Node):
             # Occupied
             return False
     
-    def find_nearby_free_cell(self, goal: Tuple[float, float], max_search_radius: float = 2.0) -> Optional[Tuple[float, float]]:
+    def get_cell_state(self, goal: Tuple[float, float]) -> str:
+        """
+        Get the state of a cell in the occupancy grid for logging.
+        
+        Args:
+            goal: (x, y) goal position in world coordinates
+            
+        Returns:
+            String describing the cell state
+        """
+        if self.occupancy_grid is None:
+            return "no_grid"
+        
+        # Convert world coordinates to grid coordinates
+        origin_x = self.occupancy_grid.info.origin.position.x
+        origin_y = self.occupancy_grid.info.origin.position.y
+        resolution = self.occupancy_grid.info.resolution
+        
+        grid_x = int((goal[0] - origin_x) / resolution)
+        grid_y = int((goal[1] - origin_y) / resolution)
+        
+        # Check bounds
+        width = self.occupancy_grid.info.width
+        height = self.occupancy_grid.info.height
+        
+        if grid_x < 0 or grid_x >= width or grid_y < 0 or grid_y >= height:
+            return "out_of_bounds"
+        
+        # Get cell value
+        index = grid_y * width + grid_x
+        if index < 0 or index >= len(self.occupancy_grid.data):
+            return "invalid_index"
+        
+        cell_value = self.occupancy_grid.data[index]
+        
+        if cell_value == -1:
+            return "unknown"
+        elif cell_value >= 0 and cell_value < 50:
+            return f"free({cell_value})"
+        else:
+            return f"occupied({cell_value})"
+    
+    def find_nearby_free_cell(self, goal: Tuple[float, float], max_search_radius: float = 3.0) -> Optional[Tuple[float, float]]:
         """
         Find a nearby free cell if the goal is occupied.
         Searches in expanding circles around the goal.
@@ -577,11 +668,11 @@ class GoalSelectorNode(Node):
         resolution = self.occupancy_grid.info.resolution
         search_step = resolution * 2  # Search every 2 cells
         
-        # Search in expanding circles
-        for radius in [0.5, 1.0, 1.5, max_search_radius]:
-            num_points = int(2 * math.pi * radius / search_step)
-            if num_points < 8:
-                num_points = 8
+        # Search in expanding circles with more radii for better coverage
+        radii = [0.3, 0.5, 0.8, 1.2, 1.8, 2.5, max_search_radius]
+        
+        for radius in radii:
+            num_points = max(8, int(2 * math.pi * radius / search_step))
             
             for i in range(num_points):
                 angle = 2 * math.pi * i / num_points
@@ -589,8 +680,16 @@ class GoalSelectorNode(Node):
                 test_y = goal[1] + radius * math.sin(angle)
                 
                 if self.is_goal_valid((test_x, test_y)):
+                    self.get_logger().info(
+                        f'[FOUND_FREE_CELL] Found free cell at ({test_x:.2f}, {test_y:.2f}) '
+                        f'distance {radius:.2f}m from invalid goal ({goal[0]:.2f}, {goal[1]:.2f})'
+                    )
                     return (test_x, test_y)
         
+        self.get_logger().warn(
+            f'[NO_FREE_CELL_FOUND] Could not find free cell within {max_search_radius}m '
+            f'of goal ({goal[0]:.2f}, {goal[1]:.2f})'
+        )
         return None
 
     @staticmethod
