@@ -194,8 +194,11 @@ class FoxMQBridgeNode(Node):
 
         # Coordination topics (shared)
         self.mqtt_client.subscribe('coordination/frontiers', qos=1)
+        self.get_logger().info('Subscribed to MQTT: coordination/frontiers')
         self.mqtt_client.subscribe('coordination/paths', qos=1)
+        self.get_logger().info('Subscribed to MQTT: coordination/paths')
         self.mqtt_client.subscribe('coordination/goals', qos=1)
+        self.get_logger().info('Subscribed to MQTT: coordination/goals')
 
         self.get_logger().info('Subscribed to all MQTT topics')
 
@@ -205,6 +208,8 @@ class FoxMQBridgeNode(Node):
             topic = msg.topic
             payload = msg.payload.decode('utf-8')
             data = json.loads(payload)
+
+            self.get_logger().info(f'Received MQTT message on {topic}: {len(payload)} bytes')
 
             # Route message to appropriate ROS2 topic
             self.route_mqtt_to_ros2(topic, data)
@@ -237,6 +242,7 @@ class FoxMQBridgeNode(Node):
         elif parts[0] == 'coordination':
             coord_type = parts[1]
             if coord_type == 'frontiers':
+                self.get_logger().info(f'Routing coordination/frontiers message to ROS2')
                 self.publish_coordination_frontiers(data)
             elif coord_type == 'paths':
                 self.publish_coordination_paths(data)
@@ -555,6 +561,7 @@ class FoxMQBridgeNode(Node):
     def publish_coordination_frontiers(self, data: Dict[str, Any]):
         """Publish coordination frontiers from MQTT to ROS2"""
         if 'coordination_frontiers' not in self.ros2_publishers:
+            self.get_logger().warn('coordination_frontiers publisher not initialized')
             return
 
         msg = Float32MultiArray()
@@ -562,6 +569,9 @@ class FoxMQBridgeNode(Node):
             for frontier in data['frontiers']:
                 msg.data.append(frontier.get('x', 0.0))
                 msg.data.append(frontier.get('y', 0.0))
+        
+        num_frontiers = len(data.get('frontiers', []))
+        self.get_logger().info(f'Publishing {num_frontiers} coordination frontiers to ROS2 topic /coordination/frontiers')
         self.ros2_publishers['coordination_frontiers'].publish(msg)
 
     def publish_coordination_paths(self, data: Dict[str, Any]):

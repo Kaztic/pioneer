@@ -76,6 +76,22 @@ if pgrep -f "foxmq run" > /dev/null; then
     fi
 fi
 
+# Check if port 1883 is in use (required for broker 0)
+if ss -tuln 2>/dev/null | grep -q ":1883 " || netstat -tuln 2>/dev/null | grep -q ":1883 "; then
+    echo -e "${RED}✗${NC} Port 1883 is already in use"
+    echo -e "${YELLOW}This is likely mosquitto or another MQTT broker.${NC}"
+    echo ""
+    echo -e "${BLUE}To fix this, run one of the following:${NC}"
+    echo "  1. Stop mosquitto: sudo systemctl stop snap.mosquitto.mosquitto.service"
+    echo "  2. Or disable mosquitto: sudo systemctl disable snap.mosquitto.mosquitto.service"
+    echo ""
+    read -p "Continue anyway? (broker 0 will fail) (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
 echo -e "${BLUE}Starting FoxMQ cluster (4 nodes)...${NC}"
 echo ""
 
