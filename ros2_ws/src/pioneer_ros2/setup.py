@@ -28,6 +28,7 @@ setup(
             'aggregator_node = pioneer_ros2.aggregator_node:main',
             'cmd_vel_bridge_node = pioneer_ros2.cmd_vel_bridge_node:main',
             'lidar_bridge_node = pioneer_ros2.lidar_bridge_node:main',
+            'camera_bridge_node = pioneer_ros2.camera_bridge_node:main',
             'foxmq_bridge_node = pioneer_ros2.foxmq_bridge_node:main',
         ],
     },

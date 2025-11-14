@@ -47,3 +47,7 @@ mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" \
     done
 
 
+
+
+
+

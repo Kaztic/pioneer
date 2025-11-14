@@ -16,9 +16,10 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry, Path, OccupancyGrid
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
-from std_msgs.msg import Header, Float32, String
+from std_msgs.msg import Header, Float32, String, Float32MultiArray
 import math
 import time
+import json
 from typing import Optional
 
 from pioneer_path_planner.a_star_planner import AStarPlanner, CellState
@@ -162,6 +163,24 @@ class PathPlannerNode(Node):
             10
         )
         self.get_logger().info(f'Publishing to /{robot_id}/global_path')
+
+        # Path coordination publisher (for collision avoidance)
+        self.path_coord_publisher = self.create_publisher(
+            Float32MultiArray,
+            'global_path_coord',
+            10
+        )
+        self.get_logger().info(f'Publishing to /{robot_id}/global_path_coord')
+
+        # Subscribe to replan requests
+        self.replan_subscription = self.create_subscription(
+            String,
+            'replan_request',
+            self.replan_callback,
+            10
+        )
+        self.get_logger().info(f'Subscribed to /{robot_id}/replan_request')
+        self.replan_requested = False
         
         # Diagnostics publishers
         self.path_length_publisher = self.create_publisher(
@@ -313,6 +332,9 @@ class PathPlannerNode(Node):
         # Create and publish Path message
         path_msg = self.create_path_message(path_world)
         self.path_publisher.publish(path_msg)
+
+        # Publish path for coordination (collision avoidance)
+        self.publish_path_coordination(path_msg)
         
         # CRITICAL: Log successful path publication at ERROR level for visibility
         self.get_logger().error(
@@ -413,6 +435,33 @@ class PathPlannerNode(Node):
         qz = math.sin(yaw / 2.0)
         qw = math.cos(yaw / 2.0)
         return qx, qy, qz, qw
+
+    def publish_path_coordination(self, path_msg: Path):
+        """Publish path waypoints for coordination via MQTT."""
+        coord_msg = Float32MultiArray()
+        
+        # Serialize path waypoints: [robot_id_hash, x1, y1, x2, y2, ...]
+        # Use robot_id hash for identification
+        robot_id_hash = hash(self.robot_id) % 10000
+        coord_msg.data.append(float(robot_id_hash))
+        
+        for pose in path_msg.poses:
+            coord_msg.data.append(pose.pose.position.x)
+            coord_msg.data.append(pose.pose.position.y)
+        
+        self.path_coord_publisher.publish(coord_msg)
+
+    def replan_callback(self, msg: String):
+        """Handle replan request from collision checker."""
+        try:
+            request_data = json.loads(msg.data)
+            if request_data.get('robot_id') == self.robot_id:
+                self.replan_requested = True
+                self.get_logger().info('Replan requested by collision checker')
+                # Clear current path to trigger replanning
+                self.current_goal = None
+        except Exception as e:
+            self.get_logger().error(f'Error processing replan request: {e}')
 
 
 def main(args=None):

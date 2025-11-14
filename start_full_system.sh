@@ -46,7 +46,7 @@ echo -e "${GREEN}✓ ROS2 workspace sourced${NC}"
 
 # Step 1: Start FoxMQ Cluster
 echo ""
-echo -e "${YELLOW}[1/5] Starting FoxMQ cluster...${NC}"
+echo -e "${YELLOW}[1/7] Starting FoxMQ cluster...${NC}"
 if pgrep -f "foxmq run" > /dev/null; then
     echo -e "${GREEN}✓ FoxMQ cluster already running${NC}"
 else
@@ -70,7 +70,7 @@ fi
 
 # Step 2: Start Supervisor Node
 echo ""
-echo -e "${YELLOW}[2/5] Starting supervisor node...${NC}"
+echo -e "${YELLOW}[2/7] Starting supervisor node...${NC}"
 if pgrep -f "supervisor_node" > /dev/null; then
     echo -e "${GREEN}✓ Supervisor node already running${NC}"
 else
@@ -86,7 +86,7 @@ fi
 
 # Step 3: Start Bridge Nodes
 echo ""
-echo -e "${YELLOW}[3/5] Starting FoxMQ bridge nodes...${NC}"
+echo -e "${YELLOW}[3/7] Starting FoxMQ bridge nodes...${NC}"
 if pgrep -f "foxmq_bridge_node" > /dev/null; then
     echo -e "${GREEN}✓ Bridge nodes already running${NC}"
 else
@@ -100,44 +100,121 @@ else
     fi
 fi
 
-# Step 4: Start LiDAR Bridge Node (required for occupancy grid)
+# Step 4: Start Camera Bridge Nodes
 echo ""
-echo -e "${YELLOW}[4/6] Starting LiDAR bridge node (robot_1)...${NC}"
-if pgrep -f "lidar_bridge_node.*robot_1" > /dev/null; then
-    echo -e "${GREEN}✓ LiDAR bridge node already running${NC}"
+echo -e "${YELLOW}[4/8] Starting camera bridge nodes...${NC}"
+if pgrep -f "camera_bridge_node" > /dev/null; then
+    echo -e "${GREEN}✓ Camera bridge nodes already running${NC}"
 else
-    nohup ros2 run pioneer_ros2 lidar_bridge_node --ros-args -r __ns:=/robot_1 > /tmp/robot_1_lidar.log 2>&1 &
+    for i in {1..5}; do
+        robot_id="robot_${i}"
+        nohup ros2 run pioneer_ros2 camera_bridge_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_camera.log 2>&1 &
+        sleep 0.5
+    done
     sleep 2
-    if pgrep -f "lidar_bridge_node.*robot_1" > /dev/null; then
-        echo -e "${GREEN}✓ LiDAR bridge node started${NC}"
+    if pgrep -f "camera_bridge_node" > /dev/null; then
+        echo -e "${GREEN}✓ Camera bridge nodes started (5 robots)${NC}"
     else
-        echo -e "${RED}✗ Failed to start LiDAR bridge node${NC}"
+        echo -e "${RED}✗ Failed to start camera bridge nodes${NC}"
         exit 1
     fi
 fi
 
-# Step 5: Start Exploration Nodes (one robot for testing)
+# Step 5: Start LiDAR Bridge Node (required for occupancy grid)
 echo ""
-echo -e "${YELLOW}[5/6] Starting exploration nodes (robot_1 only for testing)...${NC}"
-if pgrep -f "occupancy_grid_builder_node.*robot_1" > /dev/null; then
-    echo -e "${GREEN}✓ Exploration nodes already running${NC}"
+echo -e "${YELLOW}[5/8] Starting LiDAR bridge nodes...${NC}"
+if pgrep -f "lidar_bridge_node" > /dev/null; then
+    echo -e "${GREEN}✓ LiDAR bridge nodes already running${NC}"
 else
-    nohup ros2 run pioneer_path_planner occupancy_grid_builder_node --ros-args -r __ns:=/robot_1 > /tmp/robot_1_grid.log 2>&1 &
-    sleep 1
-    nohup ros2 run pioneer_path_planner frontier_detector_node --ros-args -r __ns:=/robot_1 > /tmp/robot_1_frontier.log 2>&1 &
-    sleep 1
-    nohup ros2 run pioneer_path_planner goal_selector_node --ros-args -r __ns:=/robot_1 > /tmp/robot_1_goal.log 2>&1 &
-    sleep 1
-    nohup ros2 run pioneer_path_planner path_planner_node --ros-args -r __ns:=/robot_1 > /tmp/robot_1_planner.log 2>&1 &
-    sleep 1
-    nohup ros2 run pioneer_path_planner path_follower_node --ros-args -r __ns:=/robot_1 > /tmp/robot_1_follower.log 2>&1 &
+    for i in {1..5}; do
+        robot_id="robot_${i}"
+        nohup ros2 run pioneer_ros2 lidar_bridge_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_lidar.log 2>&1 &
+        sleep 0.5
+    done
     sleep 2
-    echo -e "${GREEN}✓ Exploration nodes started for robot_1${NC}"
+    if pgrep -f "lidar_bridge_node" > /dev/null; then
+        echo -e "${GREEN}✓ LiDAR bridge nodes started (5 robots)${NC}"
+    else
+        echo -e "${RED}✗ Failed to start LiDAR bridge nodes${NC}"
+        exit 1
+    fi
 fi
 
-# Step 6: Start Spatial Analysis (optional)
+# Step 6: Start cmd_vel bridge nodes (required for robot movement)
 echo ""
-echo -e "${YELLOW}[6/6] Starting spatial analysis visualizer...${NC}"
+echo -e "${YELLOW}[6/8] Starting cmd_vel bridge nodes...${NC}"
+if pgrep -f "cmd_vel_bridge_node" > /dev/null; then
+    echo -e "${GREEN}✓ cmd_vel bridge nodes already running${NC}"
+else
+    for i in {1..5}; do
+        robot_id="robot_${i}"
+        nohup ros2 run pioneer_ros2 cmd_vel_bridge_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_cmd_vel_bridge.log 2>&1 &
+        sleep 0.5
+    done
+    sleep 2
+    if pgrep -f "cmd_vel_bridge_node" > /dev/null; then
+        echo -e "${GREEN}✓ cmd_vel bridge nodes started (5 robots)${NC}"
+    else
+        echo -e "${RED}✗ Failed to start cmd_vel bridge nodes${NC}"
+        exit 1
+    fi
+fi
+
+# Step 7: Start Exploration Nodes (all robots)
+echo ""
+echo -e "${YELLOW}[7/8] Starting exploration nodes (all 5 robots)...${NC}"
+if pgrep -f "occupancy_grid_builder_node" > /dev/null; then
+    echo -e "${GREEN}✓ Exploration nodes already running${NC}"
+else
+    for i in {1..5}; do
+        robot_id="robot_${i}"
+        nohup ros2 run pioneer_path_planner occupancy_grid_builder_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_grid.log 2>&1 &
+        sleep 0.5
+        nohup ros2 run pioneer_path_planner frontier_detector_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_frontier.log 2>&1 &
+        sleep 0.5
+        nohup ros2 run pioneer_path_planner goal_selector_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_goal.log 2>&1 &
+        sleep 0.5
+        nohup ros2 run pioneer_path_planner path_planner_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_planner.log 2>&1 &
+        sleep 0.5
+        nohup ros2 run pioneer_path_planner path_follower_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_follower.log 2>&1 &
+        sleep 0.5
+        nohup ros2 run pioneer_path_planner object_detection_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_detection.log 2>&1 &
+        sleep 0.5
+        nohup ros2 run pioneer_path_planner consensus_handler_node --ros-args -r __ns:=/${robot_id} > /tmp/${robot_id}_consensus.log 2>&1 &
+        sleep 0.5
+    done
+    sleep 3
+    if pgrep -f "occupancy_grid_builder_node" > /dev/null; then
+        echo -e "${GREEN}✓ Exploration nodes started for all 5 robots${NC}"
+    else
+        echo -e "${RED}✗ Failed to start exploration nodes${NC}"
+        exit 1
+    fi
+fi
+
+# Step 8: Start Coordination Nodes
+echo ""
+echo -e "${YELLOW}[8/8] Starting coordination nodes...${NC}"
+if pgrep -f "mission_coordinator_node" > /dev/null; then
+    echo -e "${GREEN}✓ Coordination nodes already running${NC}"
+else
+    nohup ros2 run pioneer_path_planner mission_coordinator_node > /tmp/mission_coordinator.log 2>&1 &
+    sleep 1
+    nohup ros2 run pioneer_path_planner collision_avoidance_node > /tmp/collision_avoidance.log 2>&1 &
+    sleep 1
+    nohup ros2 run pioneer_path_planner verification_coordinator_node > /tmp/verification_coordinator.log 2>&1 &
+    sleep 2
+    if pgrep -f "mission_coordinator_node" > /dev/null; then
+        echo -e "${GREEN}✓ Coordination nodes started${NC}"
+    else
+        echo -e "${RED}✗ Failed to start coordination nodes${NC}"
+        exit 1
+    fi
+fi
+
+# Step 9: Start Spatial Analysis (optional)
+echo ""
+echo -e "${YELLOW}[9/9] Starting spatial analysis visualizer...${NC}"
 if pgrep -f "spatial_analysis_visualizer_node" > /dev/null; then
     echo -e "${GREEN}✓ Spatial analysis already running${NC}"
 else
@@ -156,8 +233,15 @@ echo -e "${BLUE}Running processes:${NC}"
 echo "  - FoxMQ brokers: $(pgrep -f 'foxmq run' | wc -l)"
 echo "  - Supervisor node: $(pgrep -f 'supervisor_node' | wc -l)"
 echo "  - Bridge nodes: $(pgrep -f 'foxmq_bridge_node' | wc -l)"
-echo "  - LiDAR bridge: $(pgrep -f 'lidar_bridge_node.*robot_1' | wc -l)"
-echo "  - Exploration nodes: $(pgrep -f 'occupancy_grid_builder_node.*robot_1' | wc -l)"
+echo "  - Camera bridge: $(pgrep -f 'camera_bridge_node' | wc -l)"
+echo "  - LiDAR bridge: $(pgrep -f 'lidar_bridge_node' | wc -l)"
+echo "  - cmd_vel bridge: $(pgrep -f 'cmd_vel_bridge_node' | wc -l)"
+echo "  - Exploration nodes: $(pgrep -f 'occupancy_grid_builder_node' | wc -l)"
+echo "  - Object detection: $(pgrep -f 'object_detection_node' | wc -l)"
+echo "  - Consensus handlers: $(pgrep -f 'consensus_handler_node' | wc -l)"
+echo "  - Mission coordinator: $(pgrep -f 'mission_coordinator_node' | wc -l)"
+echo "  - Collision avoidance: $(pgrep -f 'collision_avoidance_node' | wc -l)"
+echo "  - Verification coordinator: $(pgrep -f 'verification_coordinator_node' | wc -l)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Start Webots: webots worlds/pioneer_world.wbt"

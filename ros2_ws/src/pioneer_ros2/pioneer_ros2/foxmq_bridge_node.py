@@ -31,7 +31,7 @@ import time
 
 # ROS2 message imports
 from std_msgs.msg import Header, String, Float32MultiArray
-from geometry_msgs.msg import PoseStamped, Polygon, Point
+from geometry_msgs.msg import PoseStamped, Polygon, Point, Point32
 from builtin_interfaces.msg import Time
 
 # Custom message imports (if available)
@@ -192,6 +192,10 @@ class FoxMQBridgeNode(Node):
                 topic = f'robots/{robot_id}/consensus_result'
                 self.mqtt_client.subscribe(topic, qos=1)
 
+                # Consensus votes
+                topic = f'robots/{robot_id}/consensus_vote'
+                self.mqtt_client.subscribe(topic, qos=1)
+
         # Coordination topics (shared)
         self.mqtt_client.subscribe('coordination/frontiers', qos=1)
         self.get_logger().info('Subscribed to MQTT: coordination/frontiers')
@@ -238,6 +242,8 @@ class FoxMQBridgeNode(Node):
                 self.publish_territory_assignment_remote(data)
             elif message_type == 'consensus_result':
                 self.publish_consensus_result(data)
+            elif message_type == 'consensus_vote':
+                self.publish_consensus_vote(data)
 
         elif parts[0] == 'coordination':
             coord_type = parts[1]
@@ -309,6 +315,24 @@ class FoxMQBridgeNode(Node):
                 10
             )
 
+        # Consensus votes (outgoing)
+        if self.get_parameter('enable_consensus').get_parameter_value().bool_value:
+            self.create_subscription(
+                String,
+                'consensus_vote',
+                self.consensus_vote_callback,
+                10
+            )
+
+        # Path coordination (outgoing)
+        if self.get_parameter('enable_coordination').get_parameter_value().bool_value:
+            self.create_subscription(
+                Float32MultiArray,
+                'global_path_coord',
+                self.path_coord_callback,
+                10
+            )
+
         # Incoming publishers (MQTT → ROS2)
         if CUSTOM_MSGS_AVAILABLE:
             self.ros2_publishers['object_detection_remote'] = self.create_publisher(
@@ -350,9 +374,22 @@ class FoxMQBridgeNode(Node):
             10
         )
 
+        self.ros2_publishers['coordination_paths'] = self.create_publisher(
+            Float32MultiArray,
+            '/coordination/paths',
+            10
+        )
+
         self.ros2_publishers['consensus_result'] = self.create_publisher(
             String,
             '/consensus/results',
+            10
+        )
+
+        # Consensus votes (incoming from MQTT)
+        self.ros2_publishers['consensus_votes'] = self.create_publisher(
+            String,
+            '/consensus/votes',
             10
         )
 
@@ -455,6 +492,27 @@ class FoxMQBridgeNode(Node):
         mqtt_topic = f'robots/{self.robot_id}/territory'
         self.publish_mqtt(mqtt_topic, data)
 
+    def consensus_vote_callback(self, msg: String):
+        """Publish consensus vote to MQTT"""
+        if not self.mqtt_connected:
+            return
+
+        try:
+            vote_data = json.loads(msg.data)
+            mqtt_topic = f'robots/{self.robot_id}/consensus_vote'
+            self.publish_mqtt(mqtt_topic, vote_data)
+        except Exception as e:
+            self.get_logger().error(f'Error publishing consensus vote: {e}')
+
+    def publish_consensus_vote(self, data: Dict[str, Any]):
+        """Publish consensus vote from MQTT to ROS2"""
+        if 'consensus_votes' not in self.ros2_publishers:
+            return
+
+        msg = String()
+        msg.data = json.dumps(data)
+        self.ros2_publishers['consensus_votes'].publish(msg)
+
     def frontiers_callback(self, msg: Float32MultiArray):
         """Publish frontiers to MQTT coordination topic"""
         if not self.mqtt_connected:
@@ -538,10 +596,10 @@ class FoxMQBridgeNode(Node):
             msg.priority = data.get('priority', 0)
             if 'region' in data:
                 for point_data in data['region']:
-                    point = Point()
-                    point.x = point_data.get('x', 0.0)
-                    point.y = point_data.get('y', 0.0)
-                    point.z = point_data.get('z', 0.0)
+                    point = Point32()
+                    point.x = float(point_data.get('x', 0.0))
+                    point.y = float(point_data.get('y', 0.0))
+                    point.z = float(point_data.get('z', 0.0))
                     msg.assigned_region.points.append(point)
             self.ros2_publishers['territory_assignment_remote'].publish(msg)
         else:
@@ -574,10 +632,30 @@ class FoxMQBridgeNode(Node):
         self.get_logger().info(f'Publishing {num_frontiers} coordination frontiers to ROS2 topic /coordination/frontiers')
         self.ros2_publishers['coordination_frontiers'].publish(msg)
 
+    def path_coord_callback(self, msg: Float32MultiArray):
+        """Publish path coordination to MQTT"""
+        if not self.mqtt_connected:
+            return
+
+        mqtt_data = {
+            'robot_id': self.robot_id,
+            'timestamp': time.time(),
+            'path_waypoints': msg.data,
+        }
+
+        mqtt_topic = 'coordination/paths'
+        self.publish_mqtt(mqtt_topic, mqtt_data)
+
     def publish_coordination_paths(self, data: Dict[str, Any]):
         """Publish coordination paths from MQTT to ROS2"""
-        # TODO: Implement when path coordination is needed
-        pass
+        if 'coordination_paths' not in self.ros2_publishers:
+            return
+
+        msg = Float32MultiArray()
+        if 'path_waypoints' in data:
+            msg.data = [float(x) for x in data['path_waypoints']]
+        
+        self.ros2_publishers['coordination_paths'].publish(msg)
 
     def publish_coordination_goals(self, data: Dict[str, Any]):
         """Publish coordination goals from MQTT to ROS2"""

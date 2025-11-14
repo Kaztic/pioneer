@@ -20,6 +20,14 @@ from std_msgs.msg import Header
 import math
 from typing import Optional, Tuple
 
+# Import custom message
+try:
+    from pioneer_msgs.msg import MissionStatus
+    CUSTOM_MSGS_AVAILABLE = True
+except ImportError:
+    CUSTOM_MSGS_AVAILABLE = False
+    print("Warning: MissionStatus message not available")
+
 
 class PathFollowerNode(Node):
     """
@@ -148,6 +156,22 @@ class PathFollowerNode(Node):
             10
         )
         self.get_logger().info(f'Publishing to /{robot_id}/cmd_vel')
+
+        # Mission status publisher
+        if CUSTOM_MSGS_AVAILABLE:
+            self.mission_status_publisher = self.create_publisher(
+                MissionStatus,
+                'mission_status',
+                10
+            )
+            self.get_logger().info(f'Publishing to /{robot_id}/mission_status')
+        
+        # Mission status state
+        self.current_mission_status = 1  # NAVIGATING (default when following path)
+
+        # Timer for periodic mission status publishing
+        if CUSTOM_MSGS_AVAILABLE:
+            self.status_timer = self.create_timer(1.0, self.publish_mission_status)  # 1 Hz
 
         # Control timer
         self.control_timer = self.create_timer(
@@ -356,6 +380,10 @@ class PathFollowerNode(Node):
                         f'Path completed: reached goal at ({goal_pos[0]:.2f}, {goal_pos[1]:.2f}), '
                         f'distance: {distance_to_goal:.2f}m'
                     )
+                    # Update mission status based on context
+                    if self.current_mission_status == 2:  # VERIFYING
+                        self.current_mission_status = 0  # EXPLORING after verification
+                    self.publish_mission_status()
                     self.publish_stop_command()
                     self.path_active = False
                     return
@@ -368,6 +396,9 @@ class PathFollowerNode(Node):
                     self.current_waypoint_idx = len(self.current_path.poses) - 1
             else:
                 self.get_logger().info('Path completed, stopping')
+                # Update mission status to EXPLORING (ready for next goal)
+                self.current_mission_status = 0  # EXPLORING
+                self.publish_mission_status()
                 self.publish_stop_command()
                 self.path_active = False
                 return
@@ -747,6 +778,36 @@ class PathFollowerNode(Node):
             return blocked_ratio > 0.3  # More than 30% of checked path is blocked
 
         return False
+
+    def publish_mission_status(self):
+        """Publish current mission status."""
+        if not CUSTOM_MSGS_AVAILABLE:
+            return
+
+        status = MissionStatus()
+        status.header = Header()
+        status.header.stamp = self.get_clock().now().to_msg()
+        status.header.frame_id = f'{self.robot_id}/odom'
+        status.robot_id = self.robot_id
+        status.status = self.current_mission_status
+        status.object_found = False  # Path follower doesn't detect objects
+        status.status_time = self.get_clock().now().to_msg()
+
+        # Create empty pose
+        status.object_pose = PoseStamped()
+        status.object_pose.header = status.header
+
+        # Set current task description
+        status_names = {
+            0: "EXPLORING",
+            1: "NAVIGATING",
+            2: "VERIFYING",
+            3: "RETURNING",
+            4: "COMPLETE"
+        }
+        status.current_task = status_names.get(self.current_mission_status, "UNKNOWN")
+
+        self.mission_status_publisher.publish(status)
 
 
 def main(args=None):

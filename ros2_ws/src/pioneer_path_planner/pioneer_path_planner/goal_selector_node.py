@@ -23,6 +23,14 @@ from std_msgs.msg import Float32MultiArray, Header
 import math
 from typing import Optional, List, Tuple
 
+# Import custom message
+try:
+    from pioneer_msgs.msg import MissionStatus, TerritoryAssignment
+    CUSTOM_MSGS_AVAILABLE = True
+except ImportError:
+    CUSTOM_MSGS_AVAILABLE = False
+    print("Warning: MissionStatus message not available")
+
 
 class GoalSelectorNode(Node):
     """
@@ -90,6 +98,7 @@ class GoalSelectorNode(Node):
 
         # State
         self.current_frontiers: List[Tuple[float, float]] = []
+        self.shared_frontiers: List[Tuple[float, float]] = []  # Frontiers from other robots
         self.robot_position: Optional[Tuple[float, float]] = None
         self.robot_yaw: float = 0.0
         self.current_goal: Optional[PoseStamped] = None
@@ -124,6 +133,15 @@ class GoalSelectorNode(Node):
         )
         self.get_logger().info(f'Subscribed to /{self.robot_id}/occupancy_map')
 
+        # Subscribe to shared frontiers from coordination topic (via FoxMQ)
+        self.coordination_frontiers_subscription = self.create_subscription(
+            Float32MultiArray,
+            '/coordination/frontiers',  # Global topic (not namespaced)
+            self.coordination_frontiers_callback,
+            10
+        )
+        self.get_logger().info('Subscribed to /coordination/frontiers')
+
         # Publisher
         self.goal_publisher = self.create_publisher(
             PoseStamped,
@@ -131,6 +149,41 @@ class GoalSelectorNode(Node):
             10
         )
         self.get_logger().info(f'Publishing to /{self.robot_id}/goal')
+
+        # Mission status publisher
+        if CUSTOM_MSGS_AVAILABLE:
+            self.mission_status_publisher = self.create_publisher(
+                MissionStatus,
+                'mission_status',
+                10
+            )
+            self.get_logger().info(f'Publishing to /{self.robot_id}/mission_status')
+        
+        # Subscribe to territory assignments
+        if CUSTOM_MSGS_AVAILABLE:
+            self.territory_subscription = self.create_subscription(
+                TerritoryAssignment,
+                'territory_assignment',
+                self.territory_callback,
+                10
+            )
+            self.get_logger().info(f'Subscribed to /{self.robot_id}/territory_assignment')
+
+        # Subscribe to verification goals
+        self.verification_goal_subscription = self.create_subscription(
+            PoseStamped,
+            'verification_goal',
+            self.verification_goal_callback,
+            10
+        )
+        self.get_logger().info(f'Subscribed to /{self.robot_id}/verification_goal')
+        
+        # Mission status state
+        self.current_mission_status = 0  # EXPLORING
+        self.object_found = False
+        self.object_pose: Optional[PoseStamped] = None
+        self.current_territory: Optional[TerritoryAssignment] = None
+        self.verification_goal: Optional[PoseStamped] = None
 
         # Timer for periodic goal selection
         selection_freq = self.get_parameter('selection_frequency').get_parameter_value().double_value
@@ -164,6 +217,24 @@ class GoalSelectorNode(Node):
         self.current_frontiers = frontiers
         self.get_logger().debug(f'Received {len(frontiers)} frontiers')
 
+    def coordination_frontiers_callback(self, msg: Float32MultiArray):
+        """Update shared frontiers from other robots via FoxMQ."""
+        # Parse Float32MultiArray: data = [x1, y1, x2, y2, ...]
+        shared = []
+        data = msg.data
+        
+        if len(data) % 2 != 0:
+            self.get_logger().warn('Coordination frontiers array has odd number of elements, ignoring')
+            return
+        
+        for i in range(0, len(data), 2):
+            x = data[i]
+            y = data[i + 1]
+            shared.append((x, y))
+        
+        self.shared_frontiers = shared
+        self.get_logger().debug(f'Received {len(shared)} shared frontiers from other robots')
+
     def odom_callback(self, msg: Odometry):
         """Update robot position from odometry."""
         had_position = self.robot_position is not None
@@ -193,12 +264,57 @@ class GoalSelectorNode(Node):
         """Update occupancy grid for goal validation."""
         self.occupancy_grid = msg
         # Count cells for debugging
-        occupied = sum(1 for v in msg.data if v > 50)
-        free = sum(1 for v in msg.data if 0 <= v < 50)
-        unknown = sum(1 for v in msg.data if v == -1)
+
+    def territory_callback(self, msg: TerritoryAssignment):
+        """Update current territory assignment."""
+        if CUSTOM_MSGS_AVAILABLE:
+            self.current_territory = msg
+            self.publish_mission_status()
+
+    def verification_goal_callback(self, msg: PoseStamped):
+        """Handle verification goal - set status to VERIFYING and publish goal."""
+        self.verification_goal = msg
+        self.current_mission_status = 2  # VERIFYING
+        self.publish_mission_status()
+        
+        # Publish verification goal as exploration goal
+        self.goal_publisher.publish(msg)
         self.get_logger().info(
-            f'[OCCUPANCY_GRID_RECEIVED] Occupancy grid updated: {occupied} occupied, {free} free, {unknown} unknown cells'
+            f'Received verification goal: ({msg.pose.position.x:.2f}, {msg.pose.position.y:.2f})'
         )
+
+    def publish_mission_status(self):
+        """Publish current mission status."""
+        if not CUSTOM_MSGS_AVAILABLE:
+            return
+
+        status = MissionStatus()
+        status.header = Header()
+        status.header.stamp = self.get_clock().now().to_msg()
+        status.header.frame_id = f'{self.robot_id}/odom'
+        status.robot_id = self.robot_id
+        status.status = self.current_mission_status
+        status.object_found = self.object_found
+        status.status_time = self.get_clock().now().to_msg()
+
+        if self.object_found and self.object_pose:
+            status.object_pose = self.object_pose
+        else:
+            # Create empty pose
+            status.object_pose = PoseStamped()
+            status.object_pose.header = status.header
+
+        # Set current task description
+        status_names = {
+            0: "EXPLORING",
+            1: "NAVIGATING",
+            2: "VERIFYING",
+            3: "RETURNING",
+            4: "COMPLETE"
+        }
+        status.current_task = status_names.get(self.current_mission_status, "UNKNOWN")
+
+        self.mission_status_publisher.publish(status)
 
     def select_goal_callback(self):
         """Periodic callback to select and publish goal."""
@@ -210,8 +326,27 @@ class GoalSelectorNode(Node):
         
         current_time = self.get_clock().now().nanoseconds / 1e9
         
+        # Merge local and shared frontiers
+        all_frontiers = list(self.current_frontiers)  # Start with local
+        all_frontiers.extend(self.shared_frontiers)   # Add shared
+
+        # Remove duplicates (frontiers within 0.5m of each other)
+        unique_frontiers = []
+        for fx, fy in all_frontiers:
+            is_duplicate = False
+            for ux, uy in unique_frontiers:
+                if math.sqrt((fx - ux)**2 + (fy - uy)**2) < 0.5:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                unique_frontiers.append((fx, fy))
+
+        # Log when using shared frontiers
+        if len(self.shared_frontiers) > 0:
+            self.get_logger().info(f'Using {len(self.shared_frontiers)} shared frontiers from other robots')
+        
         # If no frontiers and we haven't published initial goal, publish one to start exploration
-        if not self.current_frontiers and not self.initial_goal_published:
+        if len(unique_frontiers) == 0 and not self.initial_goal_published:
             initial_goal = self.generate_initial_exploration_goal()
             if initial_goal is not None:
                 # Validate initial goal before publishing
@@ -234,7 +369,7 @@ class GoalSelectorNode(Node):
                 return
         
         # If still no frontiers but we have a current goal, check if we should keep it or pick new initial goal
-        if not self.current_frontiers:
+        if len(unique_frontiers) == 0:
             if self.current_goal is not None and self.goal_set_time is not None:
                 # Check if we've timed out on current goal
                 goal_age = current_time - self.goal_set_time
@@ -306,8 +441,8 @@ class GoalSelectorNode(Node):
                     if distance_to_goal > 3.0:  # Still far from goal
                         return  # Keep current goal
         
-        # Select best frontier
-        best_frontier = self.select_best_frontier(self.current_frontiers, self.robot_position)
+        # Select best frontier from merged frontiers
+        best_frontier = self.select_best_frontier(unique_frontiers, self.robot_position)
         
         if best_frontier is None:
             # No valid frontier found, use initial exploration
@@ -330,7 +465,7 @@ class GoalSelectorNode(Node):
         if self.is_frontier_assigned_by_other_robot(best_frontier):
             self.get_logger().debug('Best frontier appears assigned to another robot, selecting next best')
             # Try second best
-            frontiers_without_best = [f for f in self.current_frontiers if f != best_frontier]
+            frontiers_without_best = [f for f in unique_frontiers if f != best_frontier]
             if frontiers_without_best:
                 best_frontier = self.select_best_frontier(frontiers_without_best, self.robot_position)
             else:
@@ -351,7 +486,7 @@ class GoalSelectorNode(Node):
                     f'({best_frontier[0]:.2f}, {best_frontier[1]:.2f}). Trying next best frontier.'
                 )
                 # Try second best frontier
-                frontiers_without_best = [f for f in self.current_frontiers if f != best_frontier]
+                frontiers_without_best = [f for f in unique_frontiers if f != best_frontier]
                 if frontiers_without_best:
                     best_frontier = self.select_best_frontier(frontiers_without_best, self.robot_position)
                     if best_frontier is not None and self.is_goal_valid(best_frontier):
@@ -509,6 +644,10 @@ class GoalSelectorNode(Node):
         """
         goal = self.create_goal_message(frontier)
         self.goal_publisher.publish(goal)
+        
+        # Update mission status to NAVIGATING
+        self.current_mission_status = 1  # NAVIGATING
+        self.publish_mission_status()
         
         # CRITICAL: Log at ERROR level for visibility
         self.get_logger().error(

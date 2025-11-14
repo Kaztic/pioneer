@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <webots/camera.h>
 #include <webots/lidar.h>
 #include <webots/motor.h>
 #include <webots/robot.h>
@@ -37,6 +38,7 @@
 #define WHEEL_WEIGHT_THRESHOLD 100.0  // minimal weight for robot to turn
 #define CMD_VEL_FILE_PATH_MAX 256     // max path length for cmd_vel file
 #define LIDAR_FILE_PATH_MAX 256       // max path length for lidar file
+#define CAMERA_FILE_PATH_MAX 256      // max path length for camera file
 
 // Priority levels for control
 typedef enum {
@@ -143,6 +145,66 @@ void get_robot_id(char *robot_id, size_t max_len, int argc, char **argv) {
   printf("WARNING: Using default robot_id: '%s'. Set WEBOTS_ROBOT_ID env var or use --robot_id arg for multi-robot setup.\n", robot_id);
 }
 
+// Helper function to find camera device by trying common names and testing
+WbDeviceTag find_camera_device(const char *robot_id) {
+  // Try comprehensive list of camera device names
+  // Note: LiDAR is "SickLms291" in .wbt but accessed as "Sick LMS 291" (with spaces)
+  // Camera device name from Webots: "Webcam for Robotino 3"
+  const char *camera_names[] = {
+    "Webcam for Robotino 3",  // Exact name from Webots device tree
+    "webcam for robotino 3",  // Lowercase variant
+    "WEBCAM FOR ROBOTINO 3",  // Uppercase variant
+    "Robotino 3 Webcam",      // Alternative - matches LiDAR pattern (Sick LMS 291)
+    "Robotino3 Webcam",       // Alternative spacing
+    "Robotino 3Webcam",       // Another spacing variant
+    "Robotino3Webcam",        // Proto name (exact)
+    "Robotino3WebCam",        // Mixed case
+    "robotino 3 webcam",      // All lowercase with spaces
+    "robotino3 webcam",       // Lowercase with space
+    "camera",                 // Standard name
+    "webcam",                 // Alternative name
+    "front_camera",           // Descriptive name
+    "Camera",                 // Capitalized
+    "CAMERA",                 // All caps
+    "robotino3webcam",        // Lowercase
+    "ROBOTINO3WEBCAM",        // All caps
+    NULL
+  };
+  
+  // First, try all name variations
+  for (int i = 0; camera_names[i] != NULL; i++) {
+    WbDeviceTag device = wb_robot_get_device(camera_names[i]);
+    if (device != 0) {
+      // Device found - try to enable and verify it's a camera
+      printf("DEBUG: Testing device '%s' for %s...\n", camera_names[i], robot_id);
+      // Enable to test if it's a camera device (will be enabled again in main, that's OK)
+      wb_camera_enable(device, TIME_STEP);
+      int test_width = wb_camera_get_width(device);
+      int test_height = wb_camera_get_height(device);
+      
+      if (test_width > 0 && test_height > 0) {
+        // Successfully got dimensions - it's a camera!
+        // Keep it enabled (main() will enable again which is safe)
+        printf("INFO: Found camera device '%s' for %s (verified: %dx%d)\n", 
+               camera_names[i], robot_id, test_width, test_height);
+        return device;
+      } else {
+        // Not a camera or failed to get dimensions, disable and continue
+        printf("DEBUG: Device '%s' found but not a camera (width=%d, height=%d)\n", 
+               camera_names[i], test_width, test_height);
+        wb_camera_disable(device);
+      }
+    }
+  }
+  
+  // If no device found by name, try enumerating devices
+  // Webots doesn't have a direct enumeration API, so we'll just report failure
+  printf("WARNING: Camera device not found for %s after trying all name variations\n", robot_id);
+  printf("DEBUG: Tried %d different device names\n", (int)(sizeof(camera_names)/sizeof(camera_names[0]) - 1));
+  
+  return 0;
+}
+
 int main(int argc, char **argv) {
   // init webots stuff
   wb_robot_init();
@@ -161,8 +223,17 @@ int main(int argc, char **argv) {
   snprintf(lidar_file_path, sizeof(lidar_file_path),
            "/tmp/pioneer_lidar_%s.txt", robot_id);
 
+  // Construct camera file path
+  char camera_file_path[CAMERA_FILE_PATH_MAX];
+  snprintf(camera_file_path, sizeof(camera_file_path),
+           "/tmp/pioneer_camera_%s.txt", robot_id);
+
   // get devices
   WbDeviceTag lms291 = wb_robot_get_device("Sick LMS 291");
+  
+  // Find camera device using helper function
+  WbDeviceTag camera = find_camera_device(robot_id);
+  
   WbDeviceTag front_left_wheel = wb_robot_get_device("front left wheel");
   WbDeviceTag front_right_wheel = wb_robot_get_device("front right wheel");
   WbDeviceTag back_left_wheel = wb_robot_get_device("back left wheel");
@@ -170,6 +241,22 @@ int main(int argc, char **argv) {
 
   // init lms291
   wb_lidar_enable(lms291, TIME_STEP);
+  
+  // init camera
+  int cam_width = 0;
+  int cam_height = 0;
+  if (camera != 0) {
+    // Camera was already enabled in find_camera_device, but enable again to be safe
+    wb_camera_enable(camera, TIME_STEP);
+    cam_width = wb_camera_get_width(camera);
+    cam_height = wb_camera_get_height(camera);
+    printf("INFO: Camera enabled for %s: %dx%d\n", robot_id, cam_width, cam_height);
+  } else {
+    printf("WARNING: Camera device not found for %s\n", robot_id);
+    printf("DEBUG: Check Webots console for device name. Tried 14 different name variations.\n");
+    printf("DEBUG: LiDAR device name is 'Sick LMS 291' (note the spaces)\n");
+    printf("DEBUG: Camera proto is 'Robotino3Webcam' - try checking Webots device tree for actual name\n");
+  }
   const int lms291_width = wb_lidar_get_horizontal_resolution(lms291);
   const int half_width = lms291_width / 2;
   const double max_range = wb_lidar_get_max_range(lms291);
@@ -242,6 +329,31 @@ int main(int argc, char **argv) {
       rename(lidar_temp_path, lidar_file_path);
     }
 
+    // Export Camera data to file for ROS2 bridge
+    if (camera != 0) {
+      const unsigned char *image_data = wb_camera_get_image(camera);
+      if (image_data && cam_width > 0 && cam_height > 0) {
+        // Write to temp file first, then rename (atomic operation)
+        char camera_temp_path[CAMERA_FILE_PATH_MAX + 4];
+        snprintf(camera_temp_path, sizeof(camera_temp_path), "%s.tmp", camera_file_path);
+        
+        FILE *camera_file = fopen(camera_temp_path, "wb");
+        if (camera_file) {
+          // Webots camera returns BGRA format (4 bytes per pixel)
+          // Format: CAMERA:robot_name:timestamp:width:height:encoding:
+          fprintf(camera_file, "CAMERA:%s:%.6f:%d:%d:bgra8:\n", robot_id, timestamp, cam_width, cam_height);
+          
+          // Write binary image data (BGRA = 4 bytes per pixel)
+          fwrite(image_data, 1, cam_width * cam_height * 4, camera_file);
+          fflush(camera_file);
+          fclose(camera_file);
+          
+          // Atomic rename
+          rename(camera_temp_path, camera_file_path);
+        }
+      }
+    }
+
     // Initialize wheel weights (left and right)
     double wheel_weight_left = 0.0;
     double wheel_weight_right = 0.0;
@@ -286,18 +398,20 @@ int main(int argc, char **argv) {
       // When going forward, start turning when obstacle detected
       case FORWARD:
         if (wheel_weight_left > WHEEL_WEIGHT_THRESHOLD) {
-          // Turn right (slow left wheels, reverse right wheels)
-          front_left_speed = 0.5 * MAX_SPEED;
-          front_right_speed = -0.5 * MAX_SPEED;
-          back_left_speed = 0.5 * MAX_SPEED;
-          back_right_speed = -0.5 * MAX_SPEED;
+          // Turn right (slow right wheels, keep left wheels forward)
+          // This makes the robot turn right while moving forward
+          front_left_speed = CRUISING_SPEED;
+          front_right_speed = 0.3 * CRUISING_SPEED;  // Slow right side
+          back_left_speed = CRUISING_SPEED;
+          back_right_speed = 0.3 * CRUISING_SPEED;
           state = LEFT;
         } else if (wheel_weight_right > WHEEL_WEIGHT_THRESHOLD) {
-          // Turn left (slow right wheels, reverse left wheels)
-          front_left_speed = -0.5 * MAX_SPEED;
-          front_right_speed = 0.5 * MAX_SPEED;
-          back_left_speed = -0.5 * MAX_SPEED;
-          back_right_speed = 0.5 * MAX_SPEED;
+          // Turn left (slow left wheels, keep right wheels forward)
+          // This makes the robot turn left while moving forward
+          front_left_speed = 0.3 * CRUISING_SPEED;  // Slow left side
+          front_right_speed = CRUISING_SPEED;
+          back_left_speed = 0.3 * CRUISING_SPEED;
+          back_right_speed = CRUISING_SPEED;
           state = RIGHT;
         } else {
           // No obstacle, go straight
@@ -308,14 +422,14 @@ int main(int argc, char **argv) {
         }
         break;
 
-      // Continue turning left until obstacle clears
+      // Continue turning right until obstacle clears
       case LEFT:
         if (wheel_weight_left > WHEEL_WEIGHT_THRESHOLD || wheel_weight_right > WHEEL_WEIGHT_THRESHOLD) {
-          // Keep turning right
-          front_left_speed = 0.5 * MAX_SPEED;
-          front_right_speed = -0.5 * MAX_SPEED;
-          back_left_speed = 0.5 * MAX_SPEED;
-          back_right_speed = -0.5 * MAX_SPEED;
+          // Keep turning right (slow right wheels)
+          front_left_speed = CRUISING_SPEED;
+          front_right_speed = 0.3 * CRUISING_SPEED;
+          back_left_speed = CRUISING_SPEED;
+          back_right_speed = 0.3 * CRUISING_SPEED;
         } else {
           // Obstacle cleared, resume forward
           front_left_speed = CRUISING_SPEED;
@@ -326,14 +440,14 @@ int main(int argc, char **argv) {
         }
         break;
 
-      // Continue turning right until obstacle clears
+      // Continue turning left until obstacle clears
       case RIGHT:
         if (wheel_weight_left > WHEEL_WEIGHT_THRESHOLD || wheel_weight_right > WHEEL_WEIGHT_THRESHOLD) {
-          // Keep turning left
-          front_left_speed = -0.5 * MAX_SPEED;
-          front_right_speed = 0.5 * MAX_SPEED;
-          back_left_speed = -0.5 * MAX_SPEED;
-          back_right_speed = 0.5 * MAX_SPEED;
+          // Keep turning left (slow left wheels)
+          front_left_speed = 0.3 * CRUISING_SPEED;
+          front_right_speed = CRUISING_SPEED;
+          back_left_speed = 0.3 * CRUISING_SPEED;
+          back_right_speed = CRUISING_SPEED;
         } else {
           // Obstacle cleared, resume forward
           front_left_speed = CRUISING_SPEED;

@@ -7,3 +7,13 @@ centralWidgetVisible: 1
 orthographicViewHeight: 1
 textFiles: -1
 consoles: Console:All:All
+renderingDevicePerspectives: robot_1:Webcam for Robotino 3;1;0.654167;0;0
+renderingDevicePerspectives: robot_1:camera;1;1;0;0
+renderingDevicePerspectives: robot_2:Webcam for Robotino 3;1;0.654167;0;0
+renderingDevicePerspectives: robot_2:camera;1;1;0;0
+renderingDevicePerspectives: robot_3:Webcam for Robotino 3;1;0.654167;0;0
+renderingDevicePerspectives: robot_3:camera;1;1;0;0
+renderingDevicePerspectives: robot_4:Webcam for Robotino 3;1;0.654167;0;0
+renderingDevicePerspectives: robot_4:camera;1;1;0;0
+renderingDevicePerspectives: robot_5:Webcam for Robotino 3;1;0.654167;0;0
+renderingDevicePerspectives: robot_5:camera;1;1;0;0
